@@ -1,0 +1,701 @@
+-- ============================================================================
+-- INTERNAL TRAINING DASHBOARD - POWER BI DAX MEASURES
+-- Global BN OTR Internal Training Dashboard Migration
+-- ============================================================================
+-- Instructions: Create a dedicated Measures table and add these measures
+-- Organize measures into Display Folders as indicated
+-- ============================================================================
+
+
+-- ============================================================================
+-- FOLDER: 01_Core Certification Metrics
+-- ============================================================================
+
+-- Total Certifications
+-- Description: Count of all certification records
+Total Certifications = 
+    COUNTROWS(DF_Certifications)
+
+
+-- Active Certifications
+-- Description: Count of certifications with Active status
+Active Certifications = 
+    CALCULATE(
+        COUNTROWS(DF_Certifications),
+        DF_Certifications[Certification Status] = "Active"
+    )
+
+
+-- Expired Certifications
+-- Description: Count of certifications with Expired status
+Expired Certifications = 
+    CALCULATE(
+        COUNTROWS(DF_Certifications),
+        DF_Certifications[Certification Status] = "Expired"
+    )
+
+
+-- Archived Certifications
+-- Description: Count of certifications with Archived status
+Archived Certifications = 
+    CALCULATE(
+        COUNTROWS(DF_Certifications),
+        DF_Certifications[Certification Status] = "Archived"
+    )
+
+
+-- Active Rate %
+-- Description: Percentage of certifications that are Active
+-- Format: Percentage with 1 decimal
+Active Rate % = 
+    VAR _Total = [Total Certifications]
+    VAR _Active = [Active Certifications]
+    RETURN
+        IF(
+            _Total > 0, 
+            DIVIDE(_Active, _Total, 0), 
+            BLANK()
+        )
+
+
+-- Expired Rate %
+-- Description: Percentage of certifications that are Expired
+-- Format: Percentage with 1 decimal
+Expired Rate % = 
+    VAR _Total = [Total Certifications]
+    VAR _Expired = [Expired Certifications]
+    RETURN
+        IF(
+            _Total > 0, 
+            DIVIDE(_Expired, _Total, 0), 
+            BLANK()
+        )
+
+
+-- Employees Trained
+-- Description: Distinct count of employees with certifications
+Employees Trained = 
+    DISTINCTCOUNT(DF_Certifications[Employee ID])
+
+
+-- Avg Certifications Per Employee
+-- Description: Average number of certifications per employee
+-- Format: Number with 1 decimal
+Avg Certs Per Employee = 
+    VAR _TotalCerts = [Total Certifications]
+    VAR _Employees = [Employees Trained]
+    RETURN
+        IF(
+            _Employees > 0, 
+            DIVIDE(_TotalCerts, _Employees, 0), 
+            BLANK()
+        )
+
+
+-- Unique Certifications
+-- Description: Distinct count of certification titles
+Unique Certifications = 
+    DISTINCTCOUNT(DF_Certifications[Certification Title])
+
+
+-- ============================================================================
+-- FOLDER: 02_Renewal Status Metrics
+-- ============================================================================
+
+-- Days Until Expiry
+-- Description: Days from today until certification renewal date
+-- Use in row context (e.g., table visuals)
+Days Until Expiry = 
+    DATEDIFF(
+        TODAY(), 
+        MAX(DF_Certifications[Certification To Renew In]), 
+        DAY
+    )
+
+
+-- Certifications Due in 30 Days
+-- Description: Count of certs expiring within 30 days
+Due in 30 Days = 
+    CALCULATE(
+        COUNTROWS(DF_Certifications),
+        FILTER(
+            DF_Certifications,
+            VAR _Days = DATEDIFF(TODAY(), DF_Certifications[Certification To Renew In], DAY)
+            RETURN _Days > 0 && _Days <= 30
+        )
+    )
+
+
+-- Certifications Due in 60 Days
+-- Description: Count of certs expiring between 31-60 days
+Due in 60 Days = 
+    CALCULATE(
+        COUNTROWS(DF_Certifications),
+        FILTER(
+            DF_Certifications,
+            VAR _Days = DATEDIFF(TODAY(), DF_Certifications[Certification To Renew In], DAY)
+            RETURN _Days > 30 && _Days <= 60
+        )
+    )
+
+
+-- Certifications Due in 90 Days
+-- Description: Count of certs expiring between 61-90 days
+Due in 90 Days = 
+    CALCULATE(
+        COUNTROWS(DF_Certifications),
+        FILTER(
+            DF_Certifications,
+            VAR _Days = DATEDIFF(TODAY(), DF_Certifications[Certification To Renew In], DAY)
+            RETURN _Days > 60 && _Days <= 90
+        )
+    )
+
+
+-- Certifications Due in 120 Days
+-- Description: Count of certs expiring between 91-120 days
+Due in 120 Days = 
+    CALCULATE(
+        COUNTROWS(DF_Certifications),
+        FILTER(
+            DF_Certifications,
+            VAR _Days = DATEDIFF(TODAY(), DF_Certifications[Certification To Renew In], DAY)
+            RETURN _Days > 90 && _Days <= 120
+        )
+    )
+
+
+-- Total At Risk
+-- Description: Sum of all certifications needing renewal attention
+Total At Risk = 
+    [Expired Certifications] + [Due in 30 Days] + [Due in 60 Days] + [Due in 90 Days]
+
+
+-- At Risk Rate %
+-- Description: Percentage of certifications at risk (expired + due soon)
+At Risk Rate % = 
+    VAR _Total = [Total Certifications]
+    VAR _AtRisk = [Total At Risk]
+    RETURN
+        IF(
+            _Total > 0,
+            DIVIDE(_AtRisk, _Total, 0),
+            BLANK()
+        )
+
+
+-- ============================================================================
+-- FOLDER: 03_Training Session Metrics
+-- ============================================================================
+
+-- Total Sessions
+-- Description: Distinct count of training sessions
+Total Sessions = 
+    DISTINCTCOUNT(DF_Sessions[Session Name])
+
+
+-- Total Attendees
+-- Description: Count of session attendance records
+Total Attendees = 
+    COUNTROWS(DF_Sessions)
+
+
+-- Unique Attendees
+-- Description: Distinct count of employees who attended sessions
+Unique Attendees = 
+    DISTINCTCOUNT(DF_Sessions[Employee ID])
+
+
+-- Total Training Days
+-- Description: Sum of all training days
+Total Training Days = 
+    SUM(DF_Sessions[Total Trg Days])
+
+
+-- Avg Training Days Per Attendee
+-- Description: Average training days per unique attendee
+Avg Training Days Per Attendee = 
+    VAR _TotalDays = [Total Training Days]
+    VAR _Attendees = [Unique Attendees]
+    RETURN
+        IF(
+            _Attendees > 0,
+            DIVIDE(_TotalDays, _Attendees, 0),
+            BLANK()
+        )
+
+
+-- Total Remote Days
+-- Description: Sum of remote training days
+Total Remote Days = 
+    SUM(DF_Sessions[Remote Days])
+
+
+-- Total In-Class Days
+-- Description: Sum of in-class training days
+Total In-Class Days = 
+    SUM(DF_Sessions[In-class days])
+
+
+-- Remote Training %
+-- Description: Percentage of training delivered remotely
+Remote Training % = 
+    VAR _Remote = [Total Remote Days]
+    VAR _Total = [Total Training Days]
+    RETURN
+        IF(
+            _Total > 0,
+            DIVIDE(_Remote, _Total, 0),
+            BLANK()
+        )
+
+
+-- ============================================================================
+-- FOLDER: 04_Cost Metrics
+-- ============================================================================
+
+-- Total VCO Savings
+-- Description: Sum of Value Creation Opportunity savings
+-- Format: Currency
+Total VCO Savings = 
+    SUM(DF_Sessions[Total VCO ($)])
+
+
+-- Total BR Cost
+-- Description: Sum of Burden Rate costs
+-- Format: Currency
+Total BR Cost = 
+    SUM(DF_Sessions[BRCost])
+
+
+-- Total T&L Cost
+-- Description: Sum of Travel & Lodging costs
+-- Format: Currency
+Total T&L Cost = 
+    SUM(DF_Sessions[T&L])
+
+
+-- Total Training Cost
+-- Description: Sum of all training costs
+-- Format: Currency
+Total Training Cost = 
+    SUM(DF_Sessions[TotalCost])
+
+
+-- Total Remote Training Savings
+-- Description: Sum of savings from remote training
+-- Format: Currency
+Total Remote Training Savings = 
+    SUM(DF_Sessions[Total Remote Trg. Savings])
+
+
+-- Cost Per Training Day
+-- Description: Average cost per training day delivered
+-- Format: Currency
+Cost Per Training Day = 
+    VAR _Cost = [Total Training Cost]
+    VAR _Days = [Total Training Days]
+    RETURN
+        IF(
+            _Days > 0,
+            DIVIDE(_Cost, _Days, 0),
+            BLANK()
+        )
+
+
+-- Cost Per Attendee
+-- Description: Average cost per unique attendee
+-- Format: Currency
+Cost Per Attendee = 
+    VAR _Cost = [Total Training Cost]
+    VAR _Attendees = [Unique Attendees]
+    RETURN
+        IF(
+            _Attendees > 0,
+            DIVIDE(_Cost, _Attendees, 0),
+            BLANK()
+        )
+
+
+-- Net Training Investment
+-- Description: Total cost minus VCO savings
+-- Format: Currency
+Net Training Investment = 
+    [Total Training Cost] - [Total VCO Savings]
+
+
+-- ============================================================================
+-- FOLDER: 05_Time Intelligence
+-- ============================================================================
+
+-- Certifications YTD
+-- Description: Year-to-date certifications
+-- Requires DateTable relationship
+Certifications YTD = 
+    CALCULATE(
+        [Total Certifications],
+        DATESYTD(DateTable[Date])
+    )
+
+
+-- Certifications PY
+-- Description: Previous year certifications (same period)
+-- Requires DateTable relationship
+Certifications PY = 
+    CALCULATE(
+        [Total Certifications],
+        SAMEPERIODLASTYEAR(DateTable[Date])
+    )
+
+
+-- Certifications MTD
+-- Description: Month-to-date certifications
+-- Requires DateTable relationship
+Certifications MTD = 
+    CALCULATE(
+        [Total Certifications],
+        DATESMTD(DateTable[Date])
+    )
+
+
+-- Rolling 12M Certifications
+-- Description: Rolling 12-month certification count
+-- Requires DateTable relationship
+Rolling 12M Certifications = 
+    CALCULATE(
+        [Total Certifications],
+        DATESINPERIOD(
+            DateTable[Date],
+            MAX(DateTable[Date]),
+            -12,
+            MONTH
+        )
+    )
+
+
+-- YoY Growth %
+-- Description: Year-over-year growth percentage
+-- Format: Percentage
+YoY Growth % = 
+    VAR _Current = [Total Certifications]
+    VAR _PY = [Certifications PY]
+    RETURN
+        IF(
+            _PY > 0, 
+            DIVIDE(_Current - _PY, _PY, 0), 
+            BLANK()
+        )
+
+
+-- YoY Growth Absolute
+-- Description: Year-over-year growth in absolute numbers
+YoY Growth Absolute = 
+    [Total Certifications] - [Certifications PY]
+
+
+-- Sessions YTD
+-- Description: Year-to-date training sessions
+Sessions YTD = 
+    CALCULATE(
+        [Total Sessions],
+        DATESYTD(DateTable[Date])
+    )
+
+
+-- Sessions PY
+-- Description: Previous year sessions (same period)
+Sessions PY = 
+    CALCULATE(
+        [Total Sessions],
+        SAMEPERIODLASTYEAR(DateTable[Date])
+    )
+
+
+-- VCO Savings YTD
+-- Description: Year-to-date VCO savings
+VCO Savings YTD = 
+    CALCULATE(
+        [Total VCO Savings],
+        DATESYTD(DateTable[Date])
+    )
+
+
+-- VCO Savings PY
+-- Description: Previous year VCO savings (same period)
+VCO Savings PY = 
+    CALCULATE(
+        [Total VCO Savings],
+        SAMEPERIODLASTYEAR(DateTable[Date])
+    )
+
+
+-- ============================================================================
+-- FOLDER: 06_Variance & Target Metrics
+-- ============================================================================
+
+-- Target Active Rate
+-- Description: Target active certification rate (85%)
+-- Adjust value as needed
+Target Active Rate = 0.85
+
+
+-- Variance vs Target
+-- Description: Difference between actual and target active rate
+-- Format: Percentage
+Variance vs Target = 
+    [Active Rate %] - [Target Active Rate]
+
+
+-- Variance vs Target %
+-- Description: Percentage variance from target
+Variance vs Target % = 
+    VAR _Target = [Target Active Rate]
+    VAR _Actual = [Active Rate %]
+    RETURN
+        IF(
+            _Target > 0,
+            DIVIDE(_Actual - _Target, _Target, 0),
+            BLANK()
+        )
+
+
+-- RAG Status
+-- Description: Red/Amber/Green status indicator
+-- Use for conditional formatting
+RAG Status = 
+    VAR _Rate = [Active Rate %]
+    RETURN
+        SWITCH(
+            TRUE(),
+            _Rate >= 0.85, "Green",
+            _Rate >= 0.70, "Amber",
+            "Red"
+        )
+
+
+-- RAG Status Sort
+-- Description: Numeric value for sorting RAG status
+RAG Status Sort = 
+    VAR _Rate = [Active Rate %]
+    RETURN
+        SWITCH(
+            TRUE(),
+            _Rate >= 0.85, 1,
+            _Rate >= 0.70, 2,
+            3
+        )
+
+
+-- Performance Indicator
+-- Description: Unicode symbol for quick status display
+-- Use in card visuals or tables
+Performance Indicator = 
+    VAR _Rate = [Active Rate %]
+    RETURN
+        SWITCH(
+            TRUE(),
+            _Rate >= 0.85, "●",  -- Green dot
+            _Rate >= 0.70, "●",  -- Amber dot (apply color via formatting)
+            "●"                   -- Red dot
+        )
+
+
+-- Trend Direction
+-- Description: Arrow indicator for YoY trend
+Trend Direction = 
+    VAR _Change = [YoY Growth Absolute]
+    RETURN
+        SWITCH(
+            TRUE(),
+            _Change > 0, "▲",
+            _Change < 0, "▼",
+            "◆"
+        )
+
+
+-- ============================================================================
+-- FOLDER: 07_Competency Metrics
+-- ============================================================================
+
+-- Employees with Active Certs
+-- Description: Distinct employees with at least one active certification
+Employees with Active Certs = 
+    CALCULATE(
+        DISTINCTCOUNT(DF_Certifications[Employee ID]),
+        DF_Certifications[Certification Status] = "Active"
+    )
+
+
+-- Competency Coverage %
+-- Description: % of employees with active certifications
+Competency Coverage % = 
+    VAR _WithCerts = [Employees with Active Certs]
+    VAR _TotalEmployees = [Employees Trained]
+    RETURN
+        IF(
+            _TotalEmployees > 0,
+            DIVIDE(_WithCerts, _TotalEmployees, 0),
+            BLANK()
+        )
+
+
+-- Avg Active Certs Per Employee
+-- Description: Average active certifications per employee
+Avg Active Certs Per Employee = 
+    VAR _ActiveCerts = [Active Certifications]
+    VAR _Employees = [Employees Trained]
+    RETURN
+        IF(
+            _Employees > 0,
+            DIVIDE(_ActiveCerts, _Employees, 0),
+            BLANK()
+        )
+
+
+-- Skill Depth Score
+-- Description: Weighted score based on certification distribution
+-- Higher score = better skill distribution
+Skill Depth Score = 
+    VAR _AvgCerts = [Avg Active Certs Per Employee]
+    VAR _Coverage = [Competency Coverage %]
+    VAR _UniqueSkills = [Unique Certifications]
+    RETURN
+        (_AvgCerts * 0.3) + (_Coverage * 100 * 0.4) + (_UniqueSkills * 0.3)
+
+
+-- ============================================================================
+-- FOLDER: 08_Conditional Formatting Helpers
+-- ============================================================================
+
+-- Active Rate Color
+-- Description: Returns hex color code for active rate
+-- Use in conditional formatting rules
+Active Rate Color = 
+    VAR _Rate = [Active Rate %]
+    RETURN
+        SWITCH(
+            TRUE(),
+            _Rate >= 0.85, "#70AD47",  -- Green
+            _Rate >= 0.70, "#FFC000",  -- Amber
+            "#C00000"                   -- Red
+        )
+
+
+-- Days Until Expiry Color
+-- Description: Returns hex color for expiry urgency
+Days Until Expiry Color = 
+    VAR _Days = [Days Until Expiry]
+    RETURN
+        SWITCH(
+            TRUE(),
+            _Days < 0, "#C00000",       -- Red (Expired)
+            _Days <= 30, "#C00000",     -- Red
+            _Days <= 60, "#FFC000",     -- Amber
+            _Days <= 90, "#FFFF00",     -- Yellow
+            "#70AD47"                    -- Green
+        )
+
+
+-- Renewal Priority
+-- Description: Numeric priority for sorting renewals
+-- Lower number = higher priority
+Renewal Priority = 
+    VAR _Days = [Days Until Expiry]
+    RETURN
+        SWITCH(
+            TRUE(),
+            _Days < 0, 1,       -- Expired
+            _Days <= 30, 2,    -- Critical
+            _Days <= 60, 3,    -- High
+            _Days <= 90, 4,    -- Medium
+            _Days <= 120, 5,   -- Low
+            6                   -- Normal
+        )
+
+
+-- ============================================================================
+-- FOLDER: 09_Calculated Columns (Add to DF_Certifications table)
+-- ============================================================================
+
+-- CALCULATED COLUMN: Renewal Status
+-- Add this to DF_Certifications table, not as a measure
+-- Renewal Status = 
+--     VAR _DaysToRenewal = DATEDIFF(TODAY(), DF_Certifications[Certification To Renew In], DAY)
+--     RETURN
+--         SWITCH(
+--             TRUE(),
+--             _DaysToRenewal < 0, "Expired",
+--             _DaysToRenewal <= 30, "Due in 30 Days",
+--             _DaysToRenewal <= 60, "Due in 60 Days",
+--             _DaysToRenewal <= 90, "Due in 90 Days",
+--             _DaysToRenewal <= 120, "Due in 120 Days",
+--             "Active"
+--         )
+
+
+-- CALCULATED COLUMN: Renewal Status Sort Order
+-- Add this to DF_Certifications table for proper sorting
+-- Renewal Status Sort = 
+--     VAR _DaysToRenewal = DATEDIFF(TODAY(), DF_Certifications[Certification To Renew In], DAY)
+--     RETURN
+--         SWITCH(
+--             TRUE(),
+--             _DaysToRenewal < 0, 1,
+--             _DaysToRenewal <= 30, 2,
+--             _DaysToRenewal <= 60, 3,
+--             _DaysToRenewal <= 90, 4,
+--             _DaysToRenewal <= 120, 5,
+--             6
+--         )
+
+
+-- CALCULATED COLUMN: Is At Risk Flag
+-- Add this to DF_Certifications table
+-- Is At Risk = 
+--     VAR _Days = DATEDIFF(TODAY(), DF_Certifications[Certification To Renew In], DAY)
+--     RETURN
+--         IF(_Days <= 90, TRUE(), FALSE())
+
+
+-- ============================================================================
+-- FOLDER: 10_DateTable (Create as calculated table)
+-- ============================================================================
+
+-- DateTable
+-- Description: Standard date dimension table
+-- Run this once to create the table
+-- DateTable = 
+--     VAR _MinDate = DATE(2016, 1, 1)
+--     VAR _MaxDate = DATE(2030, 12, 31)
+--     RETURN
+--     ADDCOLUMNS(
+--         CALENDAR(_MinDate, _MaxDate),
+--         "Year", YEAR([Date]),
+--         "Quarter", "Q" & QUARTER([Date]),
+--         "Year-Quarter", YEAR([Date]) & "-Q" & QUARTER([Date]),
+--         "Month", MONTH([Date]),
+--         "Month Name", FORMAT([Date], "MMMM"),
+--         "Month Short", FORMAT([Date], "MMM"),
+--         "Year-Month", FORMAT([Date], "YYYY-MM"),
+--         "Year-Month Name", FORMAT([Date], "YYYY MMM"),
+--         "Week", WEEKNUM([Date]),
+--         "Year-Week", YEAR([Date]) & "-W" & FORMAT(WEEKNUM([Date]), "00"),
+--         "Day", DAY([Date]),
+--         "Day Name", FORMAT([Date], "dddd"),
+--         "Day Short", FORMAT([Date], "ddd"),
+--         "Is Weekend", IF(WEEKDAY([Date], 2) > 5, TRUE(), FALSE()),
+--         "Is Current Year", IF(YEAR([Date]) = YEAR(TODAY()), TRUE(), FALSE()),
+--         "Is Current Month", IF(YEAR([Date]) = YEAR(TODAY()) && MONTH([Date]) = MONTH(TODAY()), TRUE(), FALSE())
+--     )
+
+
+-- ============================================================================
+-- END OF DAX MEASURES FILE
+-- ============================================================================
+-- Remember to:
+-- 1. Mark DateTable as a Date Table in Power BI
+-- 2. Create relationships between DateTable and fact tables
+-- 3. Organize measures into Display Folders
+-- 4. Apply appropriate formatting (%, Currency, Number)
+-- 5. Test all measures with sample data before deployment
+-- ============================================================================
