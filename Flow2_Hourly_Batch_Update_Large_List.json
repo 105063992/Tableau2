@@ -1,0 +1,286 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    }
+  },
+  "triggers": {
+    "Trigger_Hourly": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Hour",
+        "interval": 1,
+        "timeZone": "Arabian Standard Time"
+      }
+    }
+  },
+  "actions": {
+    "Initialize_ProcessedCount": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "ProcessedCount",
+            "type": "integer",
+            "value": 0
+          }
+        ]
+      },
+      "runAfter": {}
+    },
+    "Initialize_UpdatedCount": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "UpdatedCount",
+            "type": "integer",
+            "value": 0
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_ProcessedCount": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_HasMoreItems": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "HasMoreItems",
+            "type": "boolean",
+            "value": true
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_UpdatedCount": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_BatchNumber": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "BatchNumber",
+            "type": "integer",
+            "value": 0
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_HasMoreItems": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Get_SP_Items_Batch": {
+      "type": "ApiConnection",
+      "inputs": {
+        "host": {
+          "connection": {
+            "name": "@parameters('$connections')['sharepointonline']['connectionId']"
+          }
+        },
+        "method": "get",
+        "path": "/datasets/@{encodeURIComponent(encodeURIComponent('https://bakerhughes.sharepoint.com/sites/IETBNServicesFinancialAnalytics'))}/tables/@{encodeURIComponent(encodeURIComponent('Forecast Main List'))}/items",
+        "queries": {
+          "$top": 5000
+        }
+      },
+      "runAfter": {
+        "Initialize_BatchNumber": [
+          "Succeeded"
+        ]
+      },
+      "runtimeConfiguration": {
+        "paginationPolicy": {
+          "minimumItemCount": 100000
+        }
+      }
+    },
+    "Check_Items_Returned": {
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "greater": [
+              "@length(outputs('Get_SP_Items_Batch')?['body/value'])",
+              0
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "Process_Batch": {
+          "type": "Foreach",
+          "foreach": "@outputs('Get_SP_Items_Batch')?['body/value']",
+          "actions": {
+            "Check_Has_Dataverse_ID": {
+              "type": "If",
+              "expression": {
+                "and": [
+                  {
+                    "equals": [
+                      "@empty(items('Process_Batch')?['Dataverse_ID'])",
+                      false
+                    ]
+                  }
+                ]
+              },
+              "actions": {
+                "Get_Dataflow_Record_For_Item": {
+                  "type": "ApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connection": {
+                        "name": "@parameters('$connections')['commondataserviceforapps']['connectionId']"
+                      }
+                    },
+                    "method": "get",
+                    "path": "/v2/datasets/@{encodeURIComponent(encodeURIComponent('default.cds'))}/tables/@{encodeURIComponent(encodeURIComponent('cr6b0_fad_summary_table_v6s'))}/items",
+                    "queries": {
+                      "$filter": "cr6b0_id eq '@{items('Process_Batch')?['Dataverse_ID']}'",
+                      "$top": 1,
+                      "$select": "cr6b0_id,cr6b0_region,cr6b0_subregion,cr6b0_year,cr6b0_quarters,cr6b0_month,cr6b0_forecastingtype,cr6b0_pacingtype,cr6b0_internalcqreactivesales,cr6b0_externalcqreactivesales,cr6b0_internalcqbacklogsales,cr6b0_externalcqbacklogsales,cr6b0_internalcqbacklog,cr6b0_externalcqbacklog,cr6b0_internalcqfpconvertiblesales,cr6b0_externalcqfpconvertiblesales"
+                    }
+                  },
+                  "runAfter": {}
+                },
+                "Check_Dataflow_Record_Exists": {
+                  "type": "If",
+                  "expression": {
+                    "and": [
+                      {
+                        "greater": [
+                          "@length(outputs('Get_Dataflow_Record_For_Item')?['body/value'])",
+                          0
+                        ]
+                      }
+                    ]
+                  },
+                  "actions": {
+                    "Update_SP_Item_With_Dataflow": {
+                      "type": "ApiConnection",
+                      "inputs": {
+                        "host": {
+                          "connection": {
+                            "name": "@parameters('$connections')['sharepointonline']['connectionId']"
+                          }
+                        },
+                        "method": "patch",
+                        "path": "/datasets/@{encodeURIComponent(encodeURIComponent('https://bakerhughes.sharepoint.com/sites/IETBNServicesFinancialAnalytics'))}/tables/@{encodeURIComponent(encodeURIComponent('Forecast Main List'))}/items/@{items('Process_Batch')?['ID']}",
+                        "body": {
+                          "SyncSource": "Dataflow",
+                          "LastSyncTime": "@{utcNow()}",
+                          "Region": "@{first(outputs('Get_Dataflow_Record_For_Item')?['body/value'])?['cr6b0_region']}",
+                          "Sub_x0020_Region": "@{first(outputs('Get_Dataflow_Record_For_Item')?['body/value'])?['cr6b0_subregion']}",
+                          "Year": "@{first(outputs('Get_Dataflow_Record_For_Item')?['body/value'])?['cr6b0_year']}",
+                          "Quarter": "@{first(outputs('Get_Dataflow_Record_For_Item')?['body/value'])?['cr6b0_quarters']}",
+                          "Month": "@{first(outputs('Get_Dataflow_Record_For_Item')?['body/value'])?['cr6b0_month']}",
+                          "Forecasting_x0020_Type": "@{first(outputs('Get_Dataflow_Record_For_Item')?['body/value'])?['cr6b0_forecastingtype']}",
+                          "Pacing_x0020_Type": "@{first(outputs('Get_Dataflow_Record_For_Item')?['body/value'])?['cr6b0_pacingtype']}",
+                          "Internal_x002d_CQReactiveSales": "@{first(outputs('Get_Dataflow_Record_For_Item')?['body/value'])?['cr6b0_internalcqreactivesales']}",
+                          "External_x002d_CQReactiveSales": "@{first(outputs('Get_Dataflow_Record_For_Item')?['body/value'])?['cr6b0_externalcqreactivesales']}",
+                          "Internal_x002d_CQBacklogSales": "@{first(outputs('Get_Dataflow_Record_For_Item')?['body/value'])?['cr6b0_internalcqbacklogsales']}",
+                          "External_x002d_CQBacklogSales": "@{first(outputs('Get_Dataflow_Record_For_Item')?['body/value'])?['cr6b0_externalcqbacklogsales']}",
+                          "Internal_x002d_CQBacklog": "@{first(outputs('Get_Dataflow_Record_For_Item')?['body/value'])?['cr6b0_internalcqbacklog']}",
+                          "External_x002d_CQBacklog": "@{first(outputs('Get_Dataflow_Record_For_Item')?['body/value'])?['cr6b0_externalcqbacklog']}",
+                          "Internal_x002d_CQFPConvertibleSales": "@{first(outputs('Get_Dataflow_Record_For_Item')?['body/value'])?['cr6b0_internalcqfpconvertiblesales']}",
+                          "External_x002d_CQFPConvertibleSales": "@{first(outputs('Get_Dataflow_Record_For_Item')?['body/value'])?['cr6b0_externalcqfpconvertiblesales']}"
+                        }
+                      },
+                      "runAfter": {}
+                    },
+                    "Increment_UpdatedCount": {
+                      "type": "IncrementVariable",
+                      "inputs": {
+                        "name": "UpdatedCount",
+                        "value": 1
+                      },
+                      "runAfter": {
+                        "Update_SP_Item_With_Dataflow": [
+                          "Succeeded"
+                        ]
+                      }
+                    }
+                  },
+                  "else": {
+                    "actions": {}
+                  },
+                  "runAfter": {
+                    "Get_Dataflow_Record_For_Item": [
+                      "Succeeded"
+                    ]
+                  }
+                }
+              },
+              "else": {
+                "actions": {}
+              },
+              "runAfter": {}
+            }
+          },
+          "runAfter": {},
+          "runtimeConfiguration": {
+            "concurrency": {
+              "repetitions": 20
+            }
+          }
+        },
+        "Update_ProcessedCount": {
+          "type": "SetVariable",
+          "inputs": {
+            "name": "ProcessedCount",
+            "value": "@length(outputs('Get_SP_Items_Batch')?['body/value'])"
+          },
+          "runAfter": {
+            "Process_Batch": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "else": {
+        "actions": {}
+      },
+      "runAfter": {
+        "Get_SP_Items_Batch": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Send_Summary_Email": {
+      "type": "ApiConnection",
+      "inputs": {
+        "host": {
+          "connection": {
+            "name": "@parameters('$connections')['office365']['connectionId']"
+          }
+        },
+        "method": "post",
+        "path": "/v2/Mail",
+        "body": {
+          "To": "mohamed.samir@bakerhughes.com",
+          "Subject": "✅ Hourly SP Sync Complete - @{utcNow()}",
+          "Body": "<html><body><h2 style='color: #1E4E79;'>SharePoint Sync Summary</h2><table border='1' cellpadding='8' cellspacing='0' style='border-collapse: collapse; width: 100%;'><tr style='background-color: #1E4E79; color: white;'><th>Metric</th><th>Value</th></tr><tr><td>Flow Run Time</td><td>@{utcNow()}</td></tr><tr style='background-color: #f2f2f2;'><td>Total Items Scanned</td><td>@{variables('ProcessedCount')}</td></tr><tr><td>Items Updated</td><td>@{variables('UpdatedCount')}</td></tr><tr style='background-color: #f2f2f2;'><td>Status</td><td style='color: green; font-weight: bold;'>✅ Completed</td></tr></table><br><p><strong>Flow:</strong> 02_Hourly_Update_Large_SP_List</p><p><strong>Source:</strong> FAD_Summary_Table_V6S (Dataverse)</p><p><strong>Destination:</strong> Forecast Main List (SharePoint)</p></body></html>",
+          "IsHtml": true
+        }
+      },
+      "runAfter": {
+        "Check_Items_Returned": [
+          "Succeeded"
+        ]
+      }
+    }
+  },
+  "outputs": {}
+}
